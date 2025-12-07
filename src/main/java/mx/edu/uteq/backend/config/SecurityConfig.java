@@ -1,5 +1,6 @@
 package mx.edu.uteq.backend.config;
 
+import mx.edu.uteq.backend.config.filter.GlobalRateLimitFilter; 
 import org.springframework.beans.factory.annotation.Value; 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -14,24 +15,33 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.context.SecurityContextPersistenceFilter; 
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.Arrays;
-import java.util.List; 
+import java.util.List;
 
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
-    // Propiedad externa
     @Value("${app.cors.allowed-origins}")
     private String allowedOriginsProperty;
+    
+    // Inyección de filtro de rate limiting
+    private final GlobalRateLimitFilter globalRateLimitFilter;
+
+    public SecurityConfig(GlobalRateLimitFilter globalRateLimitFilter) { 
+        this.globalRateLimitFilter = globalRateLimitFilter;
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+            .addFilterBefore(globalRateLimitFilter, SecurityContextPersistenceFilter.class) 
+            
             .cors(Customizer.withDefaults())
             .csrf(AbstractHttpConfigurer::disable)
             
@@ -73,7 +83,6 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         
-        // Usar propiedad externa
         List<String> allowedOrigins = Arrays.asList(allowedOriginsProperty.split(","));
         configuration.setAllowedOrigins(allowedOrigins);
         
