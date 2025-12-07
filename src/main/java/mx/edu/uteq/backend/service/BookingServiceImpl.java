@@ -5,6 +5,7 @@ import java.util.stream.Collectors;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Calendar;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -20,6 +21,8 @@ import mx.edu.uteq.backend.model.User;
 import mx.edu.uteq.backend.repository.BookingRepository;
 import mx.edu.uteq.backend.repository.PropertyRepository;
 import mx.edu.uteq.backend.repository.UserRepository;
+import mx.edu.uteq.backend.util.BookingStatusConstants; 
+import mx.edu.uteq.backend.util.DateConstants; 
 
 @Service
 public class BookingServiceImpl implements BookingService {
@@ -33,34 +36,91 @@ public class BookingServiceImpl implements BookingService {
     @Autowired
     private UserRepository userRepository;
 
-    // ----- MÉTODOS CRUD -----
-
+    
     @Override
     public BookingResponseDTO createBooking(BookingRequestDTO requestDTO) {
-        // 1. Buscar las entidades relacionadas
-        Property property = propertyRepository.findById(requestDTO.getPropertyId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Property not found with id: " + requestDTO.getPropertyId()));
+
+        Date startDate = requestDTO.getStartDate();
+        Date endDate = requestDTO.getEndDate();
+
+        if (startDate == null) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "La fecha de inicio es requerida."
+            );
+        }
+
+        if (endDate == null) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "La fecha de fin es requerida."
+            );
+        }
+
+        Calendar cal = Calendar.getInstance();
+        cal.set(Calendar.HOUR_OF_DAY, 0);
+        cal.set(Calendar.MINUTE, 0);
+        cal.set(Calendar.SECOND, 0);
+        cal.set(Calendar.MILLISECOND, 0);
+        Date today = cal.getTime();
+
+        if (!startDate.before(endDate)) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "La fecha de inicio debe ser estrictamente anterior a la fecha de fin."
+            );
+        }
+
+        // No se permite crear reservas en el pasado
+        if (startDate.before(today)) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "No se pueden crear reservas con fecha de inicio en el pasado."
+            );
+        }
+
+        Long propertyId = requestDTO.getPropertyId();
+        boolean overlaps = bookingRepository
+            .existsByPropertyIdAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
+                propertyId, endDate, startDate
+            );
+
+        if (overlaps) {
+            throw new ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "La propiedad ya está reservada en el rango de fechas solicitado."
+            );
+        }
+
+        Property property = propertyRepository.findById(propertyId)
+            .orElseThrow(() -> new ResponseStatusException(
+                HttpStatus.NOT_FOUND,
+                "Property not found with id: " + propertyId
+            ));
 
         User user = userRepository.findById(requestDTO.getUserId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "User not found with id: " + requestDTO.getUserId()));
+            .orElseThrow(() -> new ResponseStatusException(
+                HttpStatus.NOT_FOUND,
+                "User not found with id: " + requestDTO.getUserId()
+            ));
 
-
-        // 3. Crear la entidad Booking
+        // crear booking
         Booking booking = new Booking();
-        booking.setStatus(requestDTO.getStatus() != null ? requestDTO.getStatus() : "PENDING"); // Valor por defecto
-        booking.setStartDate(requestDTO.getStartDate());
-        booking.setEndDate(requestDTO.getEndDate());
+        booking.setStatus(
+            requestDTO.getStatus() != null ?
+            requestDTO.getStatus() :
+            BookingStatusConstants.PENDING
+        );
+        booking.setStartDate(startDate);
+        booking.setEndDate(endDate);
         booking.setProperty(property);
         booking.setUser(user);
 
-        // 4. Guardar en la BD
-        Booking savedBooking = bookingRepository.save(booking);
+        Booking saved = bookingRepository.save(booking);
 
-        // 5. Mapear a DTO de respuesta y devolver
-        return convertToResponseDTO(savedBooking);
+        return convertToResponseDTO(saved);
     }
+
 
     @Override
     public BookingResponseDTO getBookingById(Long id) {
@@ -90,7 +150,7 @@ public class BookingServiceImpl implements BookingService {
 
     @Override
     public void deleteBooking(Long id) {
-        Booking booking = findBookingById(id); // Asegurarse de que existe
+        Booking booking = findBookingById(id);
         bookingRepository.delete(booking);
     }
 
@@ -98,7 +158,10 @@ public class BookingServiceImpl implements BookingService {
     public List<BookingResponseDTO> searchBookings(String startDateStr, String endDateStr, Long propertyId, String status, Long userId) {
         Date startDate = null;
         Date endDate = null;
-        SimpleDateFormat fmt = new SimpleDateFormat("dd-MM-yyyy");
+        
+        SimpleDateFormat fmt = new SimpleDateFormat(DateConstants.DATE_FORMAT);
+        fmt.setLenient(false);
+        
         try {
             if (startDateStr != null && !startDateStr.isBlank()) {
                 startDate = fmt.parse(startDateStr);
@@ -107,8 +170,10 @@ public class BookingServiceImpl implements BookingService {
                 endDate = fmt.parse(endDateStr);
             }
         } catch (ParseException e) {
-            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
-                    "Invalid date format. Use dd-MM-yyyy");
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Invalid date format. Use " + DateConstants.DATE_FORMAT
+            );
         }
 
         final Date s = startDate;
@@ -159,11 +224,9 @@ public class BookingServiceImpl implements BookingService {
             uDto.setUserProfile(booking.getUser().getUserProfile());
         }
         
-
         return dto;
     }
 
-    // Método reutilizable para encontrar o fallar
     private Booking findBookingById(Long id) {
         return bookingRepository.findById(id)
                 .orElseThrow(
