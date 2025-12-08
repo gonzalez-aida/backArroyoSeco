@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.transaction.annotation.Transactional; 
 
 import mx.edu.uteq.backend.dto.BookingRequestDTO;
 import mx.edu.uteq.backend.dto.BookingResponseDTO;
@@ -38,6 +39,7 @@ public class BookingServiceImpl implements BookingService {
 
     
     @Override
+    @Transactional 
     public BookingResponseDTO createBooking(BookingRequestDTO requestDTO) {
 
         Date startDate = requestDTO.getStartDate();
@@ -80,6 +82,13 @@ public class BookingServiceImpl implements BookingService {
         }
 
         Long propertyId = requestDTO.getPropertyId();
+        
+        Property property = propertyRepository.findById(propertyId) 
+            .orElseThrow(() -> new ResponseStatusException(
+                HttpStatus.NOT_FOUND,
+                "Property not found with id: " + propertyId
+            ));
+
         boolean overlaps = bookingRepository
             .existsByPropertyIdAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
                 propertyId, endDate, startDate
@@ -91,12 +100,6 @@ public class BookingServiceImpl implements BookingService {
                 "La propiedad ya está reservada en el rango de fechas solicitado."
             );
         }
-
-        Property property = propertyRepository.findById(propertyId)
-            .orElseThrow(() -> new ResponseStatusException(
-                HttpStatus.NOT_FOUND,
-                "Property not found with id: " + propertyId
-            ));
 
         User user = userRepository.findById(requestDTO.getUserId())
             .orElseThrow(() -> new ResponseStatusException(
@@ -113,7 +116,7 @@ public class BookingServiceImpl implements BookingService {
         );
         booking.setStartDate(startDate);
         booking.setEndDate(endDate);
-        booking.setProperty(property);
+        booking.setProperty(property); 
         booking.setUser(user);
 
         Booking saved = bookingRepository.save(booking);
