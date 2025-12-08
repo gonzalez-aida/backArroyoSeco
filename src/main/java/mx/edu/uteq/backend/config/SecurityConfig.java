@@ -51,6 +51,7 @@ public class SecurityConfig {
             
             .authorizeHttpRequests(authorize -> authorize
                 // Endpoints públicos
+                .requestMatchers(HttpMethod.POST, "/api/auth/refresh").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/user/register").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/user/reset").permitAll()

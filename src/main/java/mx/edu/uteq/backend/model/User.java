@@ -37,6 +37,8 @@ public class User {
     @Column(nullable = false)
     private String role;
 
+    private String refreshToken;
+
     @Temporal(TemporalType.TIMESTAMP)
     @Column(name = "creation_date", nullable = false)
     private Date creationDate;
@@ -142,5 +144,13 @@ public class User {
 
     public void setPasswordResets(List<PasswordReset> passwordResets) {
         this.passwordResets = passwordResets;
+    }
+
+    public String getRefreshToken() {
+        return refreshToken;
+    }
+
+    public void setRefreshToken(String refreshToken) {
+        this.refreshToken = refreshToken;
     }
 }
